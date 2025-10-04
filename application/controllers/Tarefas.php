@@ -11,12 +11,39 @@ class Tarefas extends CI_Controller {
     }
 
     // Lista todas as tarefas
-    public function index(){
+    public function index() {
+        $this->load->model('Tag_model');         // garante que o model de tags está carregado
+        $this->load->model('Comentario_model');  // carrega o model de comentários
+
         $dados = new stdClass();
         $dados->titulo = 'Lista de Tarefas';
-        $dados->dbtarefas = $this->Tarefa_model->getAll();
+
+        // Busca todas as tarefas
+        $tarefas = $this->Tarefa_model->getAll();
+
+        // Para cada tarefa, adiciona as tags e comentários relacionados
+        foreach ($tarefas as $tarefa) {
+            // Tags
+            $tags = $this->db
+                        ->select('t.nome')
+                        ->from('tarefas_tags tt')
+                        ->join('tags t', 'tt.tag_id = t.id')
+                        ->where('tt.tarefa_id', $tarefa->id)
+                        ->get()
+                        ->result();
+            $tarefa->tags = array_map(fn($t) => $t->nome, $tags);
+
+            // Comentários
+            $comentarios = $this->Comentario_model->getByTarefa($tarefa->id);
+            $tarefa->comentarios = $comentarios;
+        }
+
+        $dados->dbtarefas = $tarefas;
+
         $this->load->view('tarefas/index', $dados);
     }
+
+
 
     // Formulário para criar nova tarefa
     public function create(){
@@ -68,6 +95,8 @@ class Tarefas extends CI_Controller {
             $tarefaAtualizada = (object) [
                 'titulo' => $this->input->post('titulo'),
                 'descricao' => $this->input->post('descricao'),
+                'prazo' => $this->input->post('prazo') ?: null,
+                'prioridade' => $this->input->post('prioridade') ?: 'Media',
             ];
 
             // Atualiza no banco
@@ -81,11 +110,12 @@ class Tarefas extends CI_Controller {
         $data = new stdClass();
         $data->titulo = 'Editar Tarefa';
         $data->tarefa = $tarefa;
+        
 
         $this->load->view('tarefas/edit', $data);
     }
 
-    // Atualizar tarefa
+    // Atualizar tarefa.
     public function update($id){
         $this->form_validation->set_rules('titulo', 'Título', 'required|max_length[255]');
         $this->form_validation->set_rules('descricao', 'Descrição', 'max_length[65535]');
@@ -106,17 +136,22 @@ class Tarefas extends CI_Controller {
 
         redirect('tarefas');
     }
-    
-
-    // Deletar tarefa
+    // Deletar tarefa(junto com comentários e vínculos de tags).
     public function delete($id){
         $tarefa = $this->Tarefa_model->get_by_id($id);
         if (!$tarefa) {
             show_404();
         }
+        // 1️ Deleta comentários relacionados à tarefa.
+        $this->db->where('tarefa_id', $id)->delete('comentarios');
 
+        // 2️ Deleta vínculos de tags relacionados à tarefa.
+        $this->db->where('tarefa_id', $id)->delete('tarefas_tags');
+
+        // 3️ Por último, deleta a tarefa em si.
         $this->Tarefa_model->delete($id);
 
         redirect('tarefas');
     }
+
 }
