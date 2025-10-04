@@ -1,5 +1,1 @@
-<h1>Passou pelo index.php</h1>
-<?php
-	require $pagina;
-
-?>
+<h1>aqui é o errado</h1>

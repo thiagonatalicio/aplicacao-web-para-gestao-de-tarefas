@@ -1,14 +1,13 @@
-<h1>Editar Tarefa</h1>
-<form method="post">
-    <label>Título:</label><input type="text" name="titulo" value="<?= $tarefa->titulo ?>" required><br>
-    <label>Descrição:</label><textarea name="descricao"><?= $tarefa->descricao ?></textarea><br>
-    <label>Prazo:</label><input type="date" name="prazo" value="<?= $tarefa->prazo ?>"><br>
-    <label>Prioridade:</label>
-    <select name="prioridade">
-        <option value="Baixa" <?= $tarefa->prioridade=='Baixa'?'selected':'' ?>>Baixa</option>
-        <option value="Media" <?= $tarefa->prioridade=='Media'?'selected':'' ?>>Media</option>
-        <option value="Alta" <?= $tarefa->prioridade=='Alta'?'selected':'' ?>>Alta</option>
-    </select><br>
-    <button type="submit">Salvar</button>
+<h1><?php echo $titulo; ?></h1>
+<?php if (validation_errors()): ?>
+    <div style="color:red;"><?php echo validation_errors(); ?></div>
+<?php endif; ?>
+<form action="<?php echo site_url('tarefas/edit/'.$tarefa->id); ?>" method="post">
+    <label for="titulo">Título:</label><br>
+    <input type="text" id="titulo" name="titulo" value="<?php echo $tarefa->titulo; ?>" required><br><br>
+
+    <label for="descricao">Descrição:</label><br>
+    <textarea id="descricao" name="descricao" rows="4" cols="50"><?php echo $tarefa->descricao; ?></textarea><br><br>
+
+    <button type="submit">Salvar alterações</button>
 </form>
-<a href="<?= site_url('tarefas') ?>">Voltar</a>
