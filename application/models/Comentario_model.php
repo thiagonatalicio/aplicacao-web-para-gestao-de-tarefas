@@ -25,4 +25,10 @@ class Comentario_model extends CI_Model {
     public function delete(int $id): bool {
         return $this->db->where('id', $id)->delete($this->table);
     }
+
+    public function update($id, $texto) {
+        return $this->db->where('id', $id)
+                        ->update('comentarios', ['texto' => $texto]);
+    }
+
 }
