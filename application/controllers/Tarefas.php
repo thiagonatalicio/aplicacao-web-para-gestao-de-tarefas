@@ -3,6 +3,16 @@ defined('BASEPATH') or exit('No direct script access allowed');
 
 class Tarefas extends CI_Controller
 {
+    private function setCorsHeaders()
+    {
+        header("Access-Control-Allow-Origin: http://localhost:3000");
+        header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
+        header("Access-Control-Allow-Headers: Content-Type, Authorization");
+
+        if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+            exit; // para preflight
+        }
+    }
 
     public function __construct()
     {
@@ -17,6 +27,7 @@ class Tarefas extends CI_Controller
     // Listagem geral com possível filtro por tags
     public function index()
     {
+        $this->setCorsHeaders();
         $tagsRaw = $this->input->get('tags', true);
         $busca = $this->input->get('busca', true);
 
@@ -35,6 +46,7 @@ class Tarefas extends CI_Controller
     // Busca unificada (título, descrição, tags)
     public function searchUnified()
     {
+        $this->setCorsHeaders();
         $termo = $this->input->get('busca', true);
         $tags = $this->input->get('tags', true);
 
@@ -52,6 +64,7 @@ class Tarefas extends CI_Controller
      */
     private function loadTasksWithExtras(array $tarefas, ?string $busca = null, ?string $tagsRaw = null)
     {
+        $this->setCorsHeaders();
         $hoje = date('Y-m-d');
 
         foreach ($tarefas as $tarefa) {
@@ -90,6 +103,7 @@ class Tarefas extends CI_Controller
      */
     public function statistics()
     {
+        $this->setCorsHeaders();
         $stats = $this->Tarefa_model->getStatistics();
 
         $data = new stdClass();
@@ -100,82 +114,94 @@ class Tarefas extends CI_Controller
     }
 
     // Exibe o formulário para criar nova tarefa e processa o envio
-    public function create()
+    public function apiCreate()
     {
-        // Instancia o objeto de dados da view
-        $data = new stdClass();
-        $data->titulo = 'Criar Nova Tarefa';
+        $this->setCorsHeaders();
 
-        // Se houver POST (formulário enviado)
-        if ($this->input->post()) {
-            // Validação básica
-            $this->load->library('form_validation');
-            $this->form_validation->set_rules('titulo', 'Título', 'required|max_length[255]');
+        // Lê JSON enviado pelo React
+        $input = json_decode(file_get_contents('php://input'), true);
 
-            if ($this->form_validation->run() === FALSE) {
-                // Volta para o form com erros
-                $this->load->view('tarefas/create', $data);
-                return;
-            }
-
-            // Prepara dados para inserir no banco
-            $tarefa = (object) [
-                'titulo' => $this->input->post('titulo', true),
-                'descricao' => $this->input->post('descricao', true),
-                'prazo' => $this->input->post('prazo') ?: null,
-                'prioridade' => $this->input->post('prioridade') ?: 'Media',
-                'status' => 'Em andamento'
-            ];
-
-            $tagsRaw = $this->input->post('tags', true);
-
-            // Chama o model orientado a objetos
-            $this->Tarefa_model->insert_tarefa($tarefa, $tagsRaw);
-
-            // Redireciona para a listagem
-            redirect('tarefas');
-        }
-
-        // Se for GET, exibe o formulário
-        $this->load->view('tarefas/create', $data);
-    }
-
-
-    // Edita a tarefa no banco de dados.
-    public function edit(int $id)
-    {
-        // Busca a tarefa pelo ID usando o model OO
-        $tarefa = $this->Tarefa_model->get_by_id($id);
-
-        if (!$tarefa) {
-            show_404();
+        if (!$input) {
+            $this->output
+                ->set_content_type('application/json')
+                ->set_status_header(400)
+                ->set_output(json_encode(['error' => 'Dados inválidos']));
             return;
         }
 
-        // Se o formulário foi enviado
-        if ($this->input->method() === 'post') {
-            // Pega os dados do formulário como objeto
-            $tarefaAtualizada = (object)[
-                'titulo' => $this->input->post('titulo', true),
-                'descricao' => $this->input->post('descricao', true),
-                'prazo' => $this->input->post('prazo') ?: null,
-                'prioridade' => $this->input->post('prioridade') ?: 'Media',
-            ];
+        // Certifique-se que os nomes batem com o que o frontend envia
+        $tarefa = (object)[
+            'titulo' => $input['titulo'] ?? '',
+            'descricao' => $input['descricao'] ?? '',
+            'prazo' => $input['prazo'] ?? null,
+            'prioridade' => $input['prioridade'] ?? 'Media',
+            'status' => $input['status'] ?? 'Em andamento'
+        ];
 
-            // Atualiza no banco usando o model OO
-            $this->Tarefa_model->update($id, $tarefaAtualizada);
+        $tagsRaw = $input['tags'] ?? null; // se vier tags, senão null
 
-            // Redireciona de volta para a listagem
-            redirect('tarefas');
+        try {
+            $id = $this->Tarefa_model->insert_tarefa($tarefa, $tagsRaw);
+            $tarefa->id = $id;
+
+            $this->output
+                ->set_content_type('application/json')
+                ->set_output(json_encode($tarefa));
+        } catch (Exception $e) {
+            log_message('error', $e->getMessage());
+            $this->output
+                ->set_content_type('application/json')
+                ->set_status_header(500)
+                ->set_output(json_encode(['error' => $e->getMessage()]));
+        }
+    }
+
+
+
+
+
+    // Edita a tarefa no banco de dados.
+    public function apiUpdate($id)
+    {
+        $this->setCorsHeaders();
+        // Lê o JSON enviado pelo front-end
+        $inputJSON = file_get_contents('php://input');
+        $input = json_decode($inputJSON, true);
+
+        $titulo = $input['titulo'] ?? null;
+        $descricao = $input['descricao'] ?? null;
+        $prazo = $input['prazo'] ?? null;
+        $prioridade = $input['prioridade'] ?? 'Media';
+
+        // Busca a tarefa
+        $tarefa = $this->Tarefa_model->get_by_id($id);
+        if (!$tarefa) {
+            $this->output
+                ->set_content_type('application/json')
+                ->set_status_header(404)
+                ->set_output(json_encode(['error' => 'Tarefa não encontrada']));
+            return;
         }
 
-        // Carrega o formulário de edição
-        $data = new stdClass();
-        $data->titulo = 'Editar Tarefa';
-        $data->tarefa = $tarefa;
+        // Atualiza
+        $tarefaAtualizada = (object)[
+            'titulo' => $titulo,
+            'descricao' => $descricao,
+            'prazo' => $prazo,
+            'prioridade' => $prioridade
+        ];
 
-        $this->load->view('tarefas/edit', $data);
+        $this->Tarefa_model->update($id, $tarefaAtualizada);
+
+        // Retorna a tarefa atualizada
+        $tarefa = $this->Tarefa_model->get_by_id($id);
+        $this->output
+            ->set_content_type('application/json')
+            ->set_output(json_encode($tarefa));
     }
+
+
+
 
     /**
      * Exclui uma tarefa pelo ID
@@ -184,6 +210,7 @@ class Tarefas extends CI_Controller
      */
     public function delete(int $id)
     {
+        $this->setCorsHeaders();
         // Busca a tarefa antes de deletar (opcional, mas evita erros)
         $tarefa = $this->Tarefa_model->get_by_id($id);
 
@@ -201,6 +228,7 @@ class Tarefas extends CI_Controller
     }
     public function update_status(int $id)
     {
+        $this->setCorsHeaders();
         $status = $this->input->post('status', true);
 
         // Valida para garantir que não seja um valor inválido
@@ -212,5 +240,36 @@ class Tarefas extends CI_Controller
 
         $this->Tarefa_model->updateStatus($id, ['status' => $status]);
         redirect('tarefas');
+    }
+
+    public function apiIndex()
+    {
+        $this->setCorsHeaders();
+        $tarefas = $this->Tarefa_model->getAll();
+
+        // Adiciona tags, comentários e status calculado (mesmo que no index)
+        $hoje = date('Y-m-d');
+        foreach ($tarefas as $tarefa) {
+            if ($tarefa->status !== 'Concluida' && !empty($tarefa->prazo) && $tarefa->prazo < $hoje) {
+                $tarefa->status_calculado = 'Atrasada';
+            } else {
+                $tarefa->status_calculado = $tarefa->status;
+            }
+
+            $tags = $this->db->select('t.nome')
+                ->from('tarefas_tags tt')
+                ->join('tags t', 'tt.tag_id = t.id')
+                ->where('tt.tarefa_id', $tarefa->id)
+                ->get()
+                ->result();
+            $tarefa->tags = array_map(fn($t) => $t->nome, $tags);
+
+            $tarefa->comentarios = $this->Comentario_model->getByTarefa($tarefa->id);
+        }
+
+        // Retorna JSON
+        $this->output
+            ->set_content_type('application/json')
+            ->set_output(json_encode($tarefas));
     }
 }
